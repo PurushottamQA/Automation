@@ -1,15 +1,19 @@
 
-# Node.js dependencies
+# Node dependencies
 node_modules/
+package-lock.json
 
-# Playwright test artifacts
+# Playwright outputs
 test-results/
 playwright-report/
+trace.zip
 
-# Allure results and temporary reports
+# Allure results (temp, don’t commit)
 allure-results/
-allure-report/
 
-# System files
+# VS Code settings
+.vscode/
+
+# Mac system files
 .DS_Store
 
