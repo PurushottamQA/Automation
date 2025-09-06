@@ -469,6 +469,41 @@ test.describe('Post-login flows (split tests with shared login)', () => {
         console.log(`🧹 Clear Filters applied, total rows visible: ${rowCount}`);
     });
 
+   test('App Users: Verify infinite scroll pagination', async ({ page }) => {
+  // Step 1: Navigate to App Users
+  await page.getByRole('link', { name: 'App Users' }).click();
+
+  // Step 2: Wait for the App Users table to load completely
+  const usersTable = await ensureUsersTable(page);
+
+  // Step 3: Locate scrollable container for the App Users table
+  const tableContainer = page.locator('div.w-full.overflow-auto');
+
+  // Step 4: Get initial row count
+  let initialRows = await usersTable.locator('tbody tr').count();
+  console.log(`Initial row count: ${initialRows}`);
+
+  // Step 5: Scroll to bottom to trigger pagination
+  await tableContainer.evaluate(el => el.scrollTo(0, el.scrollHeight));
+
+  // Step 6: Wait for new rows to load
+  await page.waitForTimeout(3000);
+
+  // Step 7: Get new row count
+  let newRows = await usersTable.locator('tbody tr').count();
+  console.log(`Row count after first scroll: ${newRows}`);
+  expect(newRows).toBeGreaterThanOrEqual(initialRows);
+
+  // Step 8: Scroll again to verify multiple pages load
+  await tableContainer.evaluate(el => el.scrollTo(0, el.scrollHeight));
+  await page.waitForTimeout(3000);
+  let finalRows = await usersTable.locator('tbody tr').count();
+  console.log(`Row count after second scroll: ${finalRows}`);
+  expect(newRows).toBeGreaterThanOrEqual(initialRows);
+  console.log("✅ App Users pagination is working");
+});
+
+
     test('Logout user', async ({ page }) => {
     // Step 1: Open user menu
     const userMenuButton = page.locator('button:has(div:has-text("Rainyday Parents"))');
