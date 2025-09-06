@@ -444,6 +444,31 @@ test.describe('Post-login flows (split tests with shared login)', () => {
         } 
     }); 
 
+        test('App Users: Clear Filters button resets table', async ({ page }) => {
+        await page.getByRole('link', { name: 'App Users' }).click();
+        const usersTable = await ensureUsersTable(page);
+
+        // Step 1: Type keyword "fin"
+        const searchBox = page.getByRole('textbox', { name: /search/i });
+        await expect(searchBox).toBeVisible({ timeout: 5000 });
+        await searchBox.fill('fin');
+
+        // Step 2: Wait for table to load after search
+        await expect(usersTable.locator('tbody tr').first()).toBeVisible({ timeout: 10000 });
+
+        // Step 3: Click Clear Filters button
+        const clearFiltersBtn = page.locator('span:has-text("Clear Filters")');
+        await expect(clearFiltersBtn).toBeVisible({ timeout: 5000 });
+        await clearFiltersBtn.click();
+
+        // Step 4: Wait for table to reload fully after clearing filters
+        await expect(usersTable.locator('tbody tr').first()).toBeVisible({ timeout: 10000 });
+
+        // Step 5: Print out row count after clearing filters
+        const rowCount = await usersTable.locator('tbody tr').count();
+        console.log(`🧹 Clear Filters applied, total rows visible: ${rowCount}`);
+    });
+
     test('Logout user', async ({ page }) => {
     // Step 1: Open user menu
     const userMenuButton = page.locator('button:has(div:has-text("Rainyday Parents"))');
