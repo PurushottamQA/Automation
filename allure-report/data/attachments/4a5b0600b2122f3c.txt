@@ -1,0 +1,3 @@
+Pre-search Total App Users: Total App Users: 0
+Post-search Total App Users: Total App Users: 134
+Table rows found (after search): 10

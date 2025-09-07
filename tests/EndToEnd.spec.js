@@ -621,6 +621,116 @@ test('Activities: Verify infinite scroll pagination', async ({ page }) => {
         console.log("✅ User Created table pagination is working");
     });
 
+// helper to parse "Total App Users: 134"
+function parseTotal(text) {
+  if (!text) return null;
+  const m = text.match(/(\d[\d,]*)/);
+  return m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+}
+
+async function waitForStableCount(page, locator, timeout = 10000, pollInterval = 500) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const a = await locator.count();
+    await page.waitForTimeout(pollInterval);
+    const b = await locator.count();
+    if (a === b) return b;
+  }
+  return await locator.count();
+}
+
+// -------------------
+// Search Test
+// -------------------
+test('App Users Table: Row count matches displayed total after search', async ({ page }) => {
+  await page.goto('https://stage.rainydayparents.com/app-users');
+
+  const searchBox = page.locator('input[placeholder="Search by name or email..."]');
+  const totalSelector = 'div.mb-4.text-lg.font-semibold.text-gray-800.ml-2';
+
+  // Get total before search
+  const preTotalText = await page.locator(totalSelector).innerText().catch(() => '');
+  console.log('Pre-search Total App Users:', preTotalText);
+
+  // Perform search
+  await searchBox.fill('fin');
+  await searchBox.press('Enter');
+
+  const rowLocator = page.locator('table tbody tr');
+  await rowLocator.first().waitFor({ timeout: 10000 });
+
+  const stableRowCount = await waitForStableCount(page, rowLocator, 15000, 400);
+
+  const postTotalText = await page.locator(totalSelector).innerText();
+  const postTotal = parseTotal(postTotalText);
+
+  console.log('Post-search Total App Users:', postTotalText);
+  console.log('Table rows found (after search):', stableRowCount);
+
+  expect(postTotal).not.toBeNull();
+  expect(stableRowCount).toBe(
+    postTotal,
+    `❌ Search mismatch → Total App Users (${postTotal}) does not match table rows (${stableRowCount})`
+  );
+});
+
+// -------------------------------
+// Suspended Filter Test
+// -------------------------------
+test('App Users Table: Row count matches displayed total after applying "Suspended" filter', async ({ page }) => {
+  await page.goto('https://stage.rainydayparents.com/app-users');
+
+  const statusDropdown = page.getByRole('button', { name: /select status/i });
+  await statusDropdown.click();
+
+  const suspendedOption = page.locator("//div[contains(@class,'cursor-pointer') and normalize-space(text())='Suspended']");
+  await suspendedOption.click();
+
+  const rowLocator = page.locator('table tbody tr');
+  const stableRowCount = await waitForStableCount(page, rowLocator, 15000, 400);
+
+  const totalText = await page.locator('div.mb-4.text-lg.font-semibold.text-gray-800.ml-2').innerText();
+  const totalNum = parseTotal(totalText);
+
+  console.log('Total App Users (Suspended):', totalText);
+  console.log('Table rows found (Suspended):', stableRowCount);
+
+  expect(totalNum).not.toBeNull();
+  expect(stableRowCount).toBe(
+    totalNum,
+    `❌ Suspended filter mismatch → Total App Users (${totalNum}) does not match table rows (${stableRowCount})`
+  );
+});
+
+// -------------------------------
+// Banned Filter Test
+// -------------------------------
+test('App Users Table: Row count matches displayed total after applying "Banned" filter', async ({ page }) => {
+  await page.goto('https://stage.rainydayparents.com/app-users');
+
+  const statusDropdown = page.getByRole('button', { name: /select status/i });
+  await statusDropdown.click();
+
+  const bannedOption = page.locator("//div[contains(@class,'cursor-pointer') and normalize-space(text())='Banned']");
+  await bannedOption.click();
+
+  const rowLocator = page.locator('table tbody tr');
+  const stableRowCount = await waitForStableCount(page, rowLocator, 15000, 400);
+
+  const totalText = await page.locator('div.mb-4.text-lg.font-semibold.text-gray-800.ml-2').innerText();
+  const totalNum = parseTotal(totalText);
+
+  console.log('Total App Users (Banned):', totalText);
+  console.log('Table rows found (Banned):', stableRowCount);
+
+  expect(totalNum).not.toBeNull();
+  expect(stableRowCount).toBe(
+    totalNum,
+    `❌ Banned filter mismatch → Total App Users (${totalNum}) does not match table rows (${stableRowCount})`
+  );
+});
+
+
     test('Logout user', async ({ page }) => {
     // Step 1: Open user menu
     const userMenuButton = page.locator('button:has(div:has-text("Rainyday Parents"))');
