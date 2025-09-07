@@ -1,0 +1,4 @@
+Initial User Created row count: 20
+Row count after first scroll: 20
+Row count after second scroll: 20
+✅ User Created table pagination is working

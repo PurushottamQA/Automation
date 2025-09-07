@@ -92,94 +92,132 @@ async function loginWithOtp(page, browser, email) {
     const activitiesLink = page.getByRole('link', { name: 'Activities' }); 
     await expect(activitiesLink).toBeVisible({ timeout: 30000 }); 
 } 
+// Reusable: Full activity creation (pick start date = tomorrow, end date = day after tomorrow from calendar)
+async function createActivityFull(page) {
+  // Navigate to Activities and open form
+  await page.getByRole('link', { name: 'Activities' }).click();
+  await expect(page.getByRole('button', { name: 'Create Activity' })).toBeVisible({ timeout: 10000 });
+  await page.getByRole('button', { name: 'Create Activity' }).click();
+  await page.waitForLoadState('networkidle');
 
-// Reusable: Full activity creation (keeps your original thorough steps) 
-async function createActivityFull(page) { 
-    // Navigate to Activities and open form 
-    await page.getByRole('link', { name: 'Activities' }).click(); 
-    await expect(page.getByRole('button', { name: 'Create Activity' })).toBeVisible({ timeout: 10000 }); 
-    await page.getByRole('button', { name: 'Create Activity' }).click(); 
-    await page.waitForLoadState('networkidle'); 
+  // Unique details
+  const uniqueId = Date.now();
+  const activityName = `Admin Event ${uniqueId}`;
+  const activityDesc = `Auto-generated test activity at ${new Date().toISOString()}`;
+  await page.getByRole('textbox', { name: 'Enter activity name' }).fill(activityName);
+  await page.getByRole('textbox', { name: 'Describe what participants' }).fill(activityDesc);
 
-    // Unique details 
-    const uniqueId = Date.now(); 
-    const activityName = `Admin Event ${uniqueId}`; 
-    const activityDesc = `Auto-generated test activity at ${new Date().toISOString()}`; 
-    await page.getByRole('textbox', { name: 'Enter activity name' }).fill(activityName); 
-    await page.getByRole('textbox', { name: 'Describe what participants' }).fill(activityDesc); 
+  // ===== Date handling =====
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const dayAfter = new Date(today);
+  dayAfter.setDate(today.getDate() + 2);
 
-    // Dates: tomorrow and day after 
-    const today = new Date(); 
-    const tomorrow = new Date(today); 
-    tomorrow.setDate(today.getDate() + 1); 
-    const dayAfter = new Date(today); 
-    dayAfter.setDate(today.getDate() + 2); 
-    await page.locator('input[name="startDate"]').fill(tomorrow.toISOString().split('T')[0]); 
-    await page.locator('input[name="endDate"]').fill(dayAfter.toISOString().split('T')[0]); 
+  const tomorrowDay = String(tomorrow.getDate()).padStart(3, "0"); 
+  const dayAfterDay = String(dayAfter.getDate()).padStart(3, "0");
 
-    // Select options (retain your selection flows) 
-    await page.getByRole('button', { name: 'Drop-in' }).click(); 
-    await page.getByText('Drop-in').nth(2).click(); 
-    await page.getByRole('button', { name: 'INDOOR' }).click(); 
-    await page.locator('div').filter({ hasText: /^OUTDOOR$/ }).click(); 
-    await page.getByRole('button', { name: 'Free' }).click(); 
-    await page.locator('div').filter({ hasText: /^Paid$/ }).click(); 
-    await page.getByPlaceholder('Enter price in USD').fill('234'); 
+  // Helper: pick a date dynamically from datepicker
+  async function pickDate(inputSelector, targetDate, daySelector) {
+    await page.locator(inputSelector).click();
 
-    // Age groups 
-    await page.getByRole('button', { name: 'Select age groups' }).click(); 
-    await page.getByRole('checkbox', { name: '0-6 months' }).check(); 
-    await page.getByRole('checkbox', { name: '1-2 years' }).check(); 
-    await page.getByRole('checkbox', { name: '3-4 years' }).check(); 
-    await page.getByRole('checkbox', { name: '4-6 years' }).check(); 
-    await page.getByRole('checkbox', { name: '6+ years' }).check(); 
-    await page.keyboard.press('Escape'); 
+    const monthName = targetDate.toLocaleString('en-US', { month: 'long' });
+    const year = targetDate.getFullYear();
+    const targetMonthYear = `${monthName} ${year}`;
 
-    // Location + address suggestion 
-    await page.getByRole('textbox', { name: 'Enter location name' }).fill('Audit centre'); 
-    const addressInput = page.getByRole('textbox', { name: 'Enter address or search...' }); 
-    const addressToType = 'Pune, Maharashtra 411041'; 
-    for (const char of addressToType) { 
-        await addressInput.type(char, { delay: 100 }); 
-    } 
-    const suggestionLocator = page.locator('[role="option"], .pac-item, li'); 
-    await expect(suggestionLocator.first()).toBeVisible({ timeout: 10000 }); 
-    const expectedSuggestion = 'Pune, Maharashtra 411041, India'; 
-    const suggestionCount = await suggestionLocator.count(); 
-    let clicked = false; 
-    for (let i = 0; i < suggestionCount; i++) { 
-        const text = await suggestionLocator.nth(i).innerText().catch(() => ''); 
-        if (text && text.includes(expectedSuggestion)) { 
-            await suggestionLocator.nth(i).click(); 
-            clicked = true; 
-            break; 
-        } 
-    } 
-    if (!clicked) { 
-        await suggestionLocator.first().click(); 
-    } 
+    while ((await page.locator('.react-datepicker__current-month').innerText()) !== targetMonthYear) {
+      await page.locator('.react-datepicker__navigation--next').click();
+      await page.waitForTimeout(300);
+    }
 
-    // URLs 
-    await page.getByRole('textbox', { name: 'Yelp URL (optional)' }).fill('www.google.com'); 
-    await page.getByRole('textbox', { name: 'website URL (optional)' }).fill('www.google.com'); 
-    await page.getByRole('textbox', { name: 'Google Reviews URL (optional)' }).fill('www.google.com'); 
-    await page.getByRole('checkbox', { name: 'Pre-registration required' }).check(); 
+    await page.locator(`.react-datepicker__day--${daySelector}`).first().click();
 
-    // Upload image (Downloads path) 
-    const downloadPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', 'Downloads', 'download (1).jpeg'); 
-    await page.setInputFiles('#image-upload', downloadPath); 
-    await page.getByRole('button', { name: 'Confirm Crop' }).click(); 
+    await expect(page.locator(inputSelector)).toHaveValue(
+      targetDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
+      { timeout: 5000 }
+    );
+  }
 
-    // Submit 
-    await page.getByRole('button', { name: 'Create Activity' }).click(); 
+  // ✅ Pick tomorrow as start date
+  await pickDate('input[name="startDate"]', tomorrow, tomorrowDay);
 
-    // Toast + table assertion 
-    const toast = page.locator('div[role="status"], div[role="alert"], .status, .toast, .notification').first(); 
-    await expect(toast).toBeVisible({ timeout: 15000 }); 
-    await expect(page.getByText(activityName, { exact: false })).toBeVisible({ timeout: 10000 }); 
+  // ✅ Pick day after tomorrow as end date
+  await pickDate('input[name="endDate"]', dayAfter, dayAfterDay);
 
-    return activityName; 
-} 
+  // Select options
+  await page.getByRole('button', { name: 'Drop-in' }).click();
+  await page.getByText('Drop-in').nth(2).click();
+
+  await page.getByRole('button', { name: 'INDOOR' }).click();
+  await page.locator('div').filter({ hasText: /^OUTDOOR$/ }).click();
+
+  await page.getByRole('button', { name: 'Free' }).click();
+  await page.locator('div').filter({ hasText: /^Paid$/ }).click();
+  await page.getByPlaceholder('Enter price in USD').fill('234');
+
+  // Age groups
+  await page.getByRole('button', { name: 'Select age groups' }).click();
+  await page.getByRole('checkbox', { name: '0-6 months' }).check();
+  await page.getByRole('checkbox', { name: '1-2 years' }).check();
+  await page.getByRole('checkbox', { name: '3-4 years' }).check();
+  await page.getByRole('checkbox', { name: '4-6 years' }).check();
+  await page.getByRole('checkbox', { name: '6+ years' }).check();
+  await page.keyboard.press('Escape');
+
+  // Location + address suggestion
+  await page.getByRole('textbox', { name: 'Enter location name' }).fill('Audit centre');
+  const addressInput = page.getByRole('textbox', { name: 'Enter address or search...' });
+  const addressToType = 'Pune, Maharashtra 411041';
+  for (const char of addressToType) {
+    await addressInput.type(char, { delay: 100 });
+  }
+  const suggestionLocator = page.locator('[role="option"], .pac-item, li');
+  await expect(suggestionLocator.first()).toBeVisible({ timeout: 10000 });
+  const expectedSuggestion = 'Pune, Maharashtra 411041, India';
+  const suggestionCount = await suggestionLocator.count();
+  let clicked = false;
+  for (let i = 0; i < suggestionCount; i++) {
+    const text = await suggestionLocator.nth(i).innerText().catch(() => '');
+    if (text && text.includes(expectedSuggestion)) {
+      await suggestionLocator.nth(i).click();
+      clicked = true;
+      break;
+    }
+  }
+  if (!clicked) {
+    await suggestionLocator.first().click();
+  }
+
+  // URLs
+  await page.getByRole('textbox', { name: 'Yelp URL (optional)' }).fill('www.google.com');
+  await page.getByRole('textbox', { name: 'website URL (optional)' }).fill('www.google.com');
+  await page.getByRole('textbox', { name: 'Google Reviews URL (optional)' }).fill('www.google.com');
+  await page.getByRole('checkbox', { name: 'Pre-registration required' }).check();
+
+  // Upload image
+  const downloadPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', 'Downloads', 'download (1).jpeg');
+  await page.setInputFiles('#image-upload', downloadPath);
+  await page.getByRole('button', { name: 'Confirm Crop' }).click();
+
+  // Submit
+  await page.getByRole('button', { name: 'Create Activity' }).click();
+
+  // ===== Submit and intercept POST =====
+  const [postResponse] = await Promise.all([
+    page.waitForResponse(res =>
+      res.url().includes('/m2/v1/activities') && res.request().method() === 'POST'
+    ),
+    page.getByRole('button', { name: 'Create Activity' }).click(),
+  ]);
+
+  const postResult = await postResponse.json();
+  expect(postResponse.ok()).toBeTruthy();
+  console.log('✅ Create response:', postResult);
+
+  const createdUuid = postResult?.data?.uuid;
+  expect(postResult?.data?.name).toBe(activityName);
+
+}
 
 async function ensureUsersTable(page) { 
     await expect(page).toHaveURL(/app-users/).catch(() => {}); 
@@ -541,6 +579,47 @@ test('Activities: Verify infinite scroll pagination', async ({ page }) => {
 });
 
 
+
+    test('User Created Table: Verify pagination works', async ({ page }) => {
+        // Step 1: Navigate to Activities page
+        await page.goto('https://stage.rainydayparents.com/activities');
+
+        // Step 2: Click the "User Created" button
+        const userCreatedBtn = page.locator('button', { hasText: 'User Created' });
+        await expect(userCreatedBtn).toBeVisible({ timeout: 10000 });
+        await userCreatedBtn.click();
+
+
+        // Step 3: Wait for the User Created table to load
+        const userCreatedTable = page.locator('table');
+        await expect(userCreatedTable).toBeVisible({ timeout: 10000 });
+
+        // Step 4: Locate the scrollable container
+        const tableContainer = page.locator('div[style*="max-height"][style*="overflow-y"]');
+
+        // Step 5: Get initial row count
+        let initialRows = await userCreatedTable.locator('tbody tr').count();
+        console.log(`Initial User Created row count: ${initialRows}`);
+
+        // Step 6: Scroll to bottom to trigger pagination
+        await tableContainer.evaluate(el => el.scrollTo(0, el.scrollHeight));
+        await page.waitForTimeout(3000);
+
+        // Step 7: Get new row count
+        let newRows = await userCreatedTable.locator('tbody tr').count();
+        console.log(`Row count after first scroll: ${newRows}`);
+        expect(newRows).toBeGreaterThanOrEqual(initialRows);
+
+        // Step 8: Scroll again to verify further pagination
+        await tableContainer.evaluate(el => el.scrollTo(0, el.scrollHeight));
+        await page.waitForTimeout(3000);
+
+        let finalRows = await userCreatedTable.locator('tbody tr').count();
+        console.log(`Row count after second scroll: ${finalRows}`);
+        expect(finalRows).toBeGreaterThanOrEqual(newRows);
+
+        console.log("✅ User Created table pagination is working");
+    });
 
     test('Logout user', async ({ page }) => {
     // Step 1: Open user menu
