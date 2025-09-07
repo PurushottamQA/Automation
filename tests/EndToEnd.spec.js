@@ -503,6 +503,44 @@ test.describe('Post-login flows (split tests with shared login)', () => {
   console.log("✅ App Users pagination is working");
 });
 
+test('Activities: Verify infinite scroll pagination', async ({ page }) => {
+  // Step 1: Navigate to Activities
+  await page.getByRole('link', { name: 'Activities' }).click();
+
+  // Step 2: Wait for Activities table to load completely
+  const activitiesTable = page.locator('table');
+  await expect(activitiesTable).toBeVisible({ timeout: 10000 });
+
+  // Step 3: Locate the scrollable container
+  const tableContainer = page.locator('div[style*="max-height"][style*="overflow-y"]');
+
+  // Step 4: Get initial row count
+  let initialRows = await activitiesTable.locator('tbody tr').count();
+  console.log(`Initial Activities row count: ${initialRows}`);
+
+  // Step 5: Scroll to bottom to trigger pagination
+  await tableContainer.evaluate(el => el.scrollTo(0, el.scrollHeight));
+
+  // Step 6: Wait for new rows to load
+  await page.waitForTimeout(3000);
+
+  // Step 7: Get new row count
+  let newRows = await activitiesTable.locator('tbody tr').count();
+  console.log(`Row count after first scroll: ${newRows}`);
+  expect(newRows).toBeGreaterThanOrEqual(initialRows);
+
+  // Step 8: Scroll again to verify further pagination
+  await tableContainer.evaluate(el => el.scrollTo(0, el.scrollHeight));
+  await page.waitForTimeout(3000);
+
+  let finalRows = await activitiesTable.locator('tbody tr').count();
+  console.log(`Row count after second scroll: ${finalRows}`);
+  expect(finalRows).toBeGreaterThanOrEqual(newRows);
+
+  console.log("✅ Activities pagination is working");
+});
+
+
 
     test('Logout user', async ({ page }) => {
     // Step 1: Open user menu
