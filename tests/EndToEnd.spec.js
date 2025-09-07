@@ -712,6 +712,9 @@ test('Verify Banned filter count matches Total App Users count', async ({ page }
   console.log(`Global Total: ${totalAppUsersCount}, Banned Rows: ${rows}`);
 });
 
+test('Intentional Test Defect Example', async ({ page }) => {
+  throw new Error('This is an intentional test defect!');
+});
 
 
     test('Logout user', async ({ page }) => {
