@@ -4,11 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-  "test": "rm -rf allure-results && npx playwright test --reporter=line,allure-playwright",
-  "allure:generate": "npx allure generate ./allure-results --clean -o ./allure-report",
-  "allure:open": "npx allure open ./allure-report",
-  "allure:publish": "rm -rf docs && cp -r allure-report docs"
-},
+    "allure:clean": "rm -rf allure-results allure-report",
+    "test": "rm -rf allure-results && npx playwright test --reporter=line,allure-playwright",
+    "allure:generate": "npx allure generate ./allure-results --clean -o ./allure-report",
+    "allure:open": "npx allure open ./allure-report",
+    "allure:publish": "rm -rf docs && cp -r allure-report docs"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -17,6 +18,13 @@
     "@playwright/test": "^1.55.0",
     "@types/node": "^24.3.1",
     "allure-commandline": "^2.34.1",
-    "allure-playwright": "^3.3.3"
+    "allure-playwright": "^3.3.3",
+    "axios": "^1.11.0",
+    "dotenv": "^17.2.2",
+    "fs-extra": "^11.3.1",
+    "inquirer": "^12.9.4"
+  },
+  "dependencies": {
+    "glob": "^11.0.3"
   }
 }
