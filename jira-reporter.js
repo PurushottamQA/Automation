@@ -1,190 +1,121 @@
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
-const FormData = require('form-data');
-const glob = require('glob');
-require('dotenv').config();
+// jira-reporter.js
+require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
+const axios = require("axios");
+const FormData = require("form-data");
+const readline = require("readline");
 
-const ALLURE_RESULTS_DIR = path.join(__dirname, 'allure-results');
+// Debug log env vars
+console.log("✅ Loaded ENV:");
+console.log({
+  JIRA_HOST: process.env.JIRA_HOST,
+  JIRA_USER: process.env.JIRA_USER,
+  JIRA_TOKEN: process.env.JIRA_TOKEN ? "✅ Loaded" : "❌ Missing",
+  JIRA_PROJECT_KEY: process.env.JIRA_PROJECT_KEY,
+  ALLURE_REPORT_URL: process.env.ALLURE_REPORT_URL,
+});
 
-// Jira config from .env
-const jiraUrl = process.env.JIRA_URL;
-const jiraEmail = process.env.JIRA_EMAIL;
-const jiraToken = process.env.JIRA_TOKEN;
-const jiraProjectKey = process.env.JIRA_PROJECT_KEY;
-const allureUrl = process.env.ALLURE_URL || '';
+// Directory containing test results
+const resultsDir = path.join(__dirname, "test-results");
 
-const authHeader = {
-  Authorization: `Basic ${Buffer.from(`${jiraEmail}:${jiraToken}`).toString('base64')}`,
-  Accept: 'application/json'
-};
-
-// --- Search for existing Jira issue ---
-async function findExistingIssue(summary) {
-  const jql = `project=${jiraProjectKey} AND summary~"${summary}" ORDER BY created DESC`;
-  try {
-    const res = await axios.get(
-      `${jiraUrl}/rest/api/3/search?jql=${encodeURIComponent(jql)}`,
-      { headers: authHeader }
-    );
-    return res.data.issues.length > 0 ? res.data.issues[0] : null;
-  } catch (err) {
-    console.error('❌ Error searching Jira:', err.response?.data || err.message);
-    return null;
-  }
+// Helper: prompt user
+function askQuestion(query) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => rl.question(query, (ans) => { rl.close(); resolve(ans); }));
 }
 
-// --- Add comment to existing issue ---
-async function addComment(issueKey, message) {
-  const body = {
-    type: 'doc',
-    version: 1,
-    content: [
-      { type: 'paragraph', content: [{ text: message, type: 'text' }] }
-    ]
-  };
+// Helper: load steps.log if available
+function loadStepsLog(testDir) {
+  const logPath = path.join(testDir, "steps.log");
+  if (!fs.existsSync(logPath)) return null;
 
-  try {
-    await axios.post(
-      `${jiraUrl}/rest/api/3/issue/${issueKey}/comment`,
-      { body },
-      { headers: authHeader }
-    );
-    console.log(`💬 Comment added to ${issueKey}`);
-  } catch (err) {
-    console.error(`❌ Error adding comment to ${issueKey}:`, err.response?.data || err.message);
-  }
+  console.log(`📝 steps.log found for ${path.basename(testDir)}`);
+  return fs.readFileSync(logPath, "utf-8").trim();
 }
 
-// --- Attach files to Jira issue ---
-async function attachFiles(issueKey, attachments) {
-  for (const file of attachments) {
-    if (!fs.existsSync(file)) {
-      console.warn(`⚠️ Attachment not found: ${file}`);
-      continue;
-    }
+// Helper: attach all artifacts from the clean failed-test folder
+async function attachArtifacts(issueKey, testDir) {
+  const artifacts = fs.readdirSync(testDir).filter(f =>
+    f.endsWith(".zip") || f.endsWith(".png") || f.endsWith(".webm") || f === "steps.log"
+  );
 
+  console.log(`🔹 Found ${artifacts.length} artifact(s) for ${path.basename(testDir)}`);
+
+  for (const fileName of artifacts) {
     const form = new FormData();
-    form.append('file', fs.createReadStream(file));
+    form.append("file", fs.createReadStream(path.join(testDir, fileName)));
 
-    try {
-      await axios.post(
-        `${jiraUrl}/rest/api/3/issue/${issueKey}/attachments`,
-        form,
-        {
-          headers: {
-            ...authHeader,
-            ...form.getHeaders(),
-            'X-Atlassian-Token': 'no-check'
-          },
-          maxContentLength: Infinity,
-          maxBodyLength: Infinity
-        }
-      );
-      console.log(`📎 Attached: ${path.basename(file)} to ${issueKey}`);
-    } catch (err) {
-      console.error(`❌ Error attaching ${path.basename(file)}:`, err.response?.data || err.message);
-    }
-  }
-}
-
-// --- Create or update Jira issue ---
-async function createOrUpdateJiraIssue(test, attachments) {
-  const summary = `[Automation Bug] ${test.name}`;
-
-  const description = {
-    type: 'doc',
-    version: 1,
-    content: [
+    await axios.post(
+      `${process.env.JIRA_HOST}/rest/api/2/issue/${issueKey}/attachments`,
+      form,
       {
-        type: 'paragraph',
-        content: [
-          {
-            text: `Automated test failed.\n\nError: ${test.statusDetails?.message || 'Unknown error'}\n\nUUID: ${test.uuid}\n\n🔗 Allure Report: ${allureUrl}`,
-            type: 'text'
-          }
-        ]
+        auth: { username: process.env.JIRA_USER, password: process.env.JIRA_TOKEN },
+        headers: { "X-Atlassian-Token": "no-check", ...form.getHeaders() },
       }
-    ]
-  };
-
-  const existingIssue = await findExistingIssue(test.name);
-
-  if (existingIssue) {
-    console.log(`⚠️ Jira issue already exists: ${existingIssue.key}`);
-    await addComment(existingIssue.key, `Test failed again.\n\n🔗 See Allure report: ${allureUrl}`);
-    await attachFiles(existingIssue.key, attachments);
-    return existingIssue.key;
-  }
-
-  const issueData = {
-    fields: {
-      project: { key: jiraProjectKey },
-      summary,
-      description,
-      issuetype: { name: 'Bug' },
-      labels: ['automation', 'playwright']
-    }
-  };
-
-  try {
-    const issue = await axios.post(`${jiraUrl}/rest/api/3/issue`, issueData, { headers: authHeader });
-    const issueKey = issue.data.key;
-    console.log(`✅ Created Jira issue: ${issueKey}`);
-    await attachFiles(issueKey, attachments);
-    return issueKey;
-  } catch (err) {
-    console.error('❌ Error creating Jira issue:', err.response?.data || err.message);
+    );
+    console.log(`📎 Attached: ${fileName}`);
   }
 }
 
-// --- Collect failed tests from allure-results ---
-function getFailedTests() {
-  const failedTests = [];
-  const files = fs.readdirSync(ALLURE_RESULTS_DIR)
-                  .filter(f => f.endsWith('-result.json')); // only individual test JSON files
-
-  for (const file of files) {
-    const data = JSON.parse(fs.readFileSync(path.join(ALLURE_RESULTS_DIR, file), 'utf-8'));
-    if (data.status === 'failed') {
-      failedTests.push(data);
-    }
-  }
-
-  return failedTests;
-}
-
-// --- Collect artifacts recursively in allure-results ---
-function collectAttachments(test) {
-  if (!test.uuid) return [];
-
-  const pattern = path.join(ALLURE_RESULTS_DIR, `**/*${test.uuid}*.*`);
-  const files = glob.sync(pattern, { nodir: true });
-
-  if (files.length === 0) {
-    console.warn(`⚠️ No artifacts found for test UUID: ${test.uuid}`);
-  }
-
-  return files;
-}
-
-// --- Main runner ---
-async function run() {
-  console.log("🔍 Reading allure-results from:", ALLURE_RESULTS_DIR);
-  console.log("🔗 Using Allure Report URL:", allureUrl);
-
-  const failedTests = getFailedTests();
-
-  if (failedTests.length === 0) {
-    console.log("✅ No failed tests found in allure-results.");
+(async () => {
+  if (!fs.existsSync(resultsDir)) {
+    console.log("❌ No test-results folder found.");
     return;
   }
 
-  for (const test of failedTests) {
-    const attachments = collectAttachments(test);
-    console.log('📁 Artifacts to attach:', attachments);
-    await createOrUpdateJiraIssue(test, attachments);
-  }
-}
+  const testDirs = fs
+    .readdirSync(resultsDir)
+    .map(f => path.join(resultsDir, f))
+    .filter(p => fs.statSync(p).isDirectory());
 
-run();
+  if (testDirs.length === 0) {
+    console.log("✅ No test folders found.");
+    return;
+  }
+
+  for (const testDir of testDirs) {
+    // Load steps.log; if missing, skip (passed tests or gibberish folders)
+    const stepsLog = loadStepsLog(testDir);
+    if (!stepsLog) {
+      console.log(`⏭️ Skipping passed or invalid test folder: ${path.basename(testDir)}`);
+      continue;
+    }
+
+    const summary = `[Automation Bug] ${path.basename(testDir)}`;
+    const description = `Automated test **${path.basename(testDir)}** failed.\n\n**Steps to Reproduce:**\n${stepsLog}\n\nAllure Report: ${process.env.ALLURE_REPORT_URL || 'N/A'}`;
+
+    const answer = await askQuestion(`Create Jira for failed test "${summary}"? (y/n) `);
+    if (answer.toLowerCase() !== "y") {
+      console.log(`⏭️ Skipped Jira issue for ${path.basename(testDir)}`);
+      continue;
+    }
+
+    try {
+      console.log(`🔹 Creating Jira issue for ${path.basename(testDir)}...`);
+      const res = await axios.post(
+        `${process.env.JIRA_HOST}/rest/api/2/issue`,
+        {
+          fields: {
+            project: { key: process.env.JIRA_PROJECT_KEY },
+            summary,
+            description,
+            issuetype: { name: "Bug" },
+          },
+        },
+        {
+          auth: { username: process.env.JIRA_USER, password: process.env.JIRA_TOKEN },
+        }
+      );
+
+      const issueKey = res.data.key;
+      console.log(`✅ Created Jira issue: ${issueKey}`);
+
+      // Attach all artifacts
+      await attachArtifacts(issueKey, testDir);
+
+    } catch (err) {
+      console.error("❌ Failed to create Jira issue:", err.message);
+    }
+  }
+})();

@@ -29,7 +29,8 @@ reporter: [
     ['allure-playwright']
   ],
 
-  outputDir: 'allure-results',
+  // keep Playwright artifacts in test-results, NOT allure-results
+  outputDir: 'test-results',
 
 /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
 use: {

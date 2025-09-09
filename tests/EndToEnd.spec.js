@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test'); 
+const { test, expect } = require('../test-logger-fixture');
 const path = require('path'); 
 
 // Run tests sequentially so negative checks happen first 
@@ -641,6 +641,7 @@ test('Verify Suspended filter count matches Total App Users count', async ({ pag
 
   // 6. Click on "Suspended" option (robust locator)
   await page.locator('//div[contains(@class,"px-4") and normalize-space(text())="Suspended"]').click();
+  await page.waitForLoadState('networkidle');
 
   // 7. Wait till either "No users found" OR table reload completes
   await Promise.race([
@@ -659,7 +660,7 @@ test('Verify Suspended filter count matches Total App Users count', async ({ pag
   // 9. Compare rows with the initial global total
   expect(
     rows,
-    `The total app users after applying suspended filter is not matching with the Total App Users count. 
+    `The total app users after applying suspended filter is not matching with the Actual suspended App Users count. 
      Expected: ${totalAppUsersCount}, but got: ${rows}`
   ).toBe(totalAppUsersCount);
 
@@ -667,50 +668,34 @@ test('Verify Suspended filter count matches Total App Users count', async ({ pag
   console.log(`Global Total: ${totalAppUsersCount}, Suspended Rows: ${rows}`);
 });
 
+// Verify Banned filter count matches Total App Users count
 test('Verify Banned filter count matches Total App Users count', async ({ page }) => {
-  // 1. Navigate to the app users page
-  await page.goto('https://stage.rainydayparents.com/app-users');
+  // Step 1: Go to App Users page
+  await page.getByRole('link', { name: 'App Users' }).click();
+  await page.waitForTimeout(2000);
 
-  // 2. Wait till the page loads completely
-  await page.waitForLoadState('networkidle');
+  // Step 2: Capture the displayed Total App Users count
+  const totalUsersText = await page.locator('text=Total App Users').innerText();
+  const totalUsersCount = parseInt(totalUsersText.replace(/\D/g, ''), 10);
 
-  // 3. Capture the initial "Total App Users" count
-  const totalAppUsersText = await page.locator('div.mb-4.text-lg.font-semibold.text-gray-800.ml-2').innerText();
-  const totalAppUsersCount = parseInt(totalAppUsersText.replace(/[^0-9]/g, ''), 10);
+  // Step 3: Apply the "Banned" filter
+  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByRole('option', { name: 'Banned' }).click();
+  await page.waitForTimeout(2000);
 
-  // 4. Open the status filter
-  await page.locator('div.form-input.flex.items-center.justify-between.h-9.py-2.cursor-pointer').click();
+  // Step 4: Count the number of rows displayed in the filtered table
+  const bannedRows = await page.locator('table tbody tr').count();
 
-  // 5. Wait till the drop-down options are loaded completely
-  await page.waitForSelector('div.px-4.py-2.text-sm.cursor-pointer');
-
-  // 6. Click on "Banned" option (robust locator)
-  await page.locator('//div[contains(@class,"px-4") and normalize-space(text())="Banned"]').click();
-
-  // 7. Wait till either "No users found" OR table reload completes
-  await Promise.race([
-    page.waitForSelector('text=No users found', { timeout: 5000 }).catch(() => {}),
-    page.waitForLoadState('networkidle')
-  ]);
-
-  // 8. Count rows
-  let rows = 0;
-  if (await page.locator('text=No users found').isVisible()) {
-    rows = 0;
-  } else {
-    rows = await page.locator('table tbody tr:has(td)').count();
+  // Step 5: Validate
+  if (bannedRows !== totalUsersCount) {
+    throw new Error(
+      `❌ Banned filter count mismatch! Displayed Total App Users: ${totalUsersCount}, but table shows ${bannedRows} rows`
+    );
   }
 
-  // 9. Compare rows with the initial global total
-  expect(
-    rows,
-    `The total app users after applying banned filter is not matching with the Total App Users count. 
-     Expected: ${totalAppUsersCount}, but got: ${rows}`
-  ).toBe(totalAppUsersCount);
-
-  // Debug log
-  console.log(`Global Total: ${totalAppUsersCount}, Banned Rows: ${rows}`);
+  console.log(`✅ Banned filter count matches Total App Users count: ${bannedRows}`);
 });
+
 
 test('Intentional Test Defect Example', async ({ page }) => {
   throw new Error('This is an intentional test defect!');
