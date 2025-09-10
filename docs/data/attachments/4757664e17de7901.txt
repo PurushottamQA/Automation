@@ -1,0 +1,13 @@
+✅ Create response: {
+  message: 'Validation Error',
+  status: 400,
+  timestamp: '2025-09-10T08:53:06.496528465Z',
+  detail: 'The request parameters failed to validate.',
+  errors: [
+    {
+      property: 'environmentType',
+      message: 'must not be null',
+      rejectedValue: null
+    }
+  ]
+}
