@@ -27,6 +27,7 @@
   "dependencies": {
     "form-data": "^4.0.4",
     "glob": "^11.0.3",
+    "jira-client": "^8.2.2",
     "unzipper": "^0.12.3"
   }
 }

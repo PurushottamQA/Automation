@@ -670,26 +670,45 @@ test('Verify Suspended filter count matches Total App Users count', async ({ pag
 
 // Verify Banned filter count matches Total App Users count
 test('Verify Banned filter count matches Total App Users count', async ({ page }) => {
-  // Step 1: Go to App Users page
-  await page.getByRole('link', { name: 'App Users' }).click();
-  await page.waitForTimeout(2000);
+  // Step 1: Navigate directly to App Users page (after login)
+  await page.goto('https://stage.rainydayparents.com/app-users');
+  await page.waitForLoadState('networkidle'); // wait until API/data loaded fully
 
-  // Step 2: Capture the displayed Total App Users count
-  const totalUsersText = await page.locator('text=Total App Users').innerText();
+  // Step 2: Wait for "Total App Users" text
+  const totalUsersLocator = page.locator('div.mb-4.text-lg.font-semibold.text-gray-800.ml-2');
+  await expect(totalUsersLocator).toBeVisible();
+
+  // Step 3: Capture the displayed Total App Users count
+  const totalUsersText = await totalUsersLocator.innerText();
   const totalUsersCount = parseInt(totalUsersText.replace(/\D/g, ''), 10);
 
-  // Step 3: Apply the "Banned" filter
-  await page.getByRole('button', { name: 'Filters' }).click();
-  await page.getByRole('option', { name: 'Banned' }).click();
-  await page.waitForTimeout(2000);
+  console.log(`🔹 Total App Users Count: ${totalUsersCount}`);
 
-  // Step 4: Count the number of rows displayed in the filtered table
-  const bannedRows = await page.locator('table tbody tr').count();
+  // Step 4: Click on the status filter drop-down
+  await page.locator('span.text-slate-400', { hasText: 'Select Status' }).click();
+  await page.waitForTimeout(500); // small buffer for dropdown to render
 
-  // Step 5: Validate
+  // Step 5: Select "Banned" from the drop-down
+  await page.locator('div.px-4.py-2.text-sm.cursor-pointer', { hasText: 'Banned' }).click();
+  await page.waitForLoadState('networkidle'); // wait until table refreshes
+
+  // Step 6: Wait till table loads completely
+  await page.waitForTimeout(1500); // buffer for UI render
+
+  // Step 7: Capture number of rows OR check if "No users found" message exists
+  let bannedRows = 0;
+  if (await page.locator('table tbody tr').count() > 0) {
+    bannedRows = await page.locator('table tbody tr').count();
+  } else if (await page.locator('p.text-lg.font-medium.text-gray-500', { hasText: 'No users found.' }).isVisible()) {
+    bannedRows = 0;
+  }
+
+  console.log(`🔹 Banned Users Count: ${bannedRows}`);
+
+  // Step 8: Compare & Validate
   if (bannedRows !== totalUsersCount) {
     throw new Error(
-      `❌ Banned filter count mismatch! Displayed Total App Users: ${totalUsersCount}, but table shows ${bannedRows} rows`
+      `❌ The total number of app users after applying "Banned" filter (${bannedRows}) does not match the actual total app users count (${totalUsersCount}).`
     );
   }
 

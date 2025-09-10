@@ -1,6 +1,2 @@
 --- Test Execution Steps ---
-[2025-09-09T14:46:19.541Z] Go to https://stage.rainydayparents.com/login
-[2025-09-09T14:46:21.886Z] Click "Continue" button
-[2025-09-09T14:46:21.928Z] Fill "Enter your email" textbox with "admin.devrainyday@yopmail.com"
-[2025-09-09T14:46:21.971Z] Click "Continue" button
-[2025-09-09T14:46:24.895Z] Click "Resend Code" button
+[2025-09-10T05:52:50.858Z] Go to https://stage.rainydayparents.com/login
