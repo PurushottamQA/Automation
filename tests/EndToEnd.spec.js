@@ -619,50 +619,51 @@ test('Activities: Verify infinite scroll pagination', async ({ page }) => {
     });
 
 
+// Verify Suspended filter count matches Total App Users count
 test('Verify Suspended filter count matches Total App Users count', async ({ page }) => {
-  // 1. Navigate to the app users page
+  // Step 1: Navigate directly to App Users page (after login)
   await page.goto('https://stage.rainydayparents.com/app-users');
+  await page.waitForLoadState('networkidle'); // wait until API/data loaded fully
 
-  // 2. Wait till the page loads completely
-  await page.waitForLoadState('networkidle');
+  // Step 2: Wait for "Total App Users" text
+  const totalUsersLocator = page.locator('div.mb-4.text-lg.font-semibold.text-gray-800.ml-2');
+  await expect(totalUsersLocator).toBeVisible();
 
-  // 3. Capture the initial "Total App Users" count
-  const totalAppUsersText = await page.locator('div.mb-4.text-lg.font-semibold.text-gray-800.ml-2').innerText();
-  const totalAppUsersCount = parseInt(totalAppUsersText.replace(/[^0-9]/g, ''), 10);
+  // Step 3: Capture the displayed Total App Users count
+  const totalUsersText = await totalUsersLocator.innerText();
+  const totalUsersCount = parseInt(totalUsersText.replace(/\D/g, ''), 10);
 
-  // 4. Open the status filter
-  await page.locator('div.form-input.flex.items-center.justify-between.h-9.py-2.cursor-pointer').click();
+  console.log(`🔹 Total App Users Count: ${totalUsersCount}`);
 
-  // 5. Wait till the drop-down options are loaded completely
-  await page.waitForSelector('div.px-4.py-2.text-sm.cursor-pointer');
+  // Step 4: Click on the status filter drop-down
+  await page.locator('span.text-slate-400', { hasText: 'Select Status' }).click();
+  await page.waitForTimeout(500); // small buffer for dropdown to render
 
-  // 6. Click on "Suspended" option (robust locator)
-  await page.locator('//div[contains(@class,"px-4") and normalize-space(text())="Suspended"]').click();
-  await page.waitForLoadState('networkidle');
+  // Step 5: Select "Suspended" from the drop-down
+  await page.locator('div.px-4.py-2.text-sm.cursor-pointer', { hasText: 'Suspended' }).click();
+  await page.waitForLoadState('networkidle'); // wait until table refreshes
 
-  // 7. Wait till either "No users found" OR table reload completes
-  await Promise.race([
-    page.waitForSelector('text=No users found', { timeout: 5000 }).catch(() => {}),
-    page.waitForLoadState('networkidle')
-  ]);
+  // Step 6: Wait till table loads completely
+  await page.waitForTimeout(1500); // buffer for UI render
 
-  // 8. Count rows
-  let rows = 0;
-  if (await page.locator('text=No users found').isVisible()) {
-    rows = 0;
-  } else {
-    rows = await page.locator('table tbody tr:has(td)').count();
+  // Step 7: Capture number of rows OR check if "No users found" message exists
+  let suspendedRows = 0;
+  if (await page.locator('table tbody tr').count() > 0) {
+    suspendedRows = await page.locator('table tbody tr').count();
+  } else if (await page.locator('p.text-lg.font-medium.text-gray-500', { hasText: 'No users found.' }).isVisible()) {
+    suspendedRows = 0;
   }
 
-  // 9. Compare rows with the initial global total
-  expect(
-    rows,
-    `The total app users after applying suspended filter is not matching with the Actual suspended App Users count. 
-     Expected: ${totalAppUsersCount}, but got: ${rows}`
-  ).toBe(totalAppUsersCount);
+  console.log(`🔹 Suspended Users Count: ${suspendedRows}`);
 
-  // Debug log
-  console.log(`Global Total: ${totalAppUsersCount}, Suspended Rows: ${rows}`);
+  // Step 8: Compare & Validate
+  if (suspendedRows !== totalUsersCount) {
+    throw new Error(
+      `❌ The total number of app users after applying "Suspended" filter (${suspendedRows}) does not match the actual total app users count (${totalUsersCount}).`
+    );
+  }
+
+  console.log(`✅ Suspended filter count matches Total App Users count: ${suspendedRows}`);
 });
 
 // Verify Banned filter count matches Total App Users count

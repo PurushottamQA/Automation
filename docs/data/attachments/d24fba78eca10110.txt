@@ -1,4 +1,0 @@
-Initial Activities row count: 10
-Row count after first scroll: 10
-Row count after second scroll: 10
-✅ Activities pagination is working

@@ -1,7 +1,6 @@
 const fs = require("fs");
 const path = require("path");
 const JiraClient = require("jira-client");
-const readline = require("readline");
 require("dotenv").config();
 
 const resultsDir = path.join(__dirname, "test-results");
@@ -15,15 +14,6 @@ const jira = new JiraClient({
   strictSSL: true,
 });
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
-
-function askQuestion(query) {
-  return new Promise((resolve) => rl.question(query, resolve));
-}
-
 async function createJiraIssue(testName, errorDetails, artifactFiles) {
   try {
     const allureUrl = process.env.ALLURE_REPORT_URL || "";
@@ -34,7 +24,54 @@ async function createJiraIssue(testName, errorDetails, artifactFiles) {
       description += `\n\n*Allure Report:* [Open Report|${allureUrl}]`;
     }
 
-    // Create Jira issue
+    // Check if issue already exists
+    const jql = `project = ${process.env.JIRA_PROJECT_KEY} AND summary ~ "[Automation Bug] ${testName}" ORDER BY created DESC`;
+    const searchResult = await jira.searchJira(jql);
+
+    if (searchResult.issues && searchResult.issues.length > 0) {
+      const existingIssue = searchResult.issues[0];
+      console.log(`🔄 Issue already exists: ${existingIssue.key}, checking status...`);
+
+      const status = existingIssue.fields.status.name.toLowerCase();
+
+      // Handle Done/Closed status
+      if (["done", "closed"].includes(status)) {
+        const transitions = await jira.listTransitions(existingIssue.key);
+        const reopenTransition = transitions.transitions.find((t) =>
+          ["reopen", "open"].some((kw) => t.name.toLowerCase().includes(kw))
+        );
+        if (reopenTransition) {
+          await jira.transitionIssue(existingIssue.key, {
+            transition: { id: reopenTransition.id },
+          });
+          console.log(`🔓 Reopened issue ${existingIssue.key}`);
+        } else {
+          console.log(
+            `⚠️ No valid reopen transition found for ${existingIssue.key}. Available: ${transitions.transitions
+              .map((t) => t.name)
+              .join(", ")}`
+          );
+        }
+      }
+
+      // Add comment with details
+      await jira.addComment(
+        existingIssue.key,
+        `h3. Retest Failure\n*Test Name:* ${testName}\n\n*Error Details:*\n${errorDetails}\n\n${allureUrl ? `*Allure Report:* [Open Report|${allureUrl}]` : ""}`
+      );
+
+      // Attach all artifacts
+      for (const file of artifactFiles) {
+        if (fs.existsSync(file)) {
+          await jira.addAttachmentOnIssue(existingIssue.key, fs.createReadStream(file));
+          console.log(`📎 Attached to ${existingIssue.key}: ${path.basename(file)}`);
+        }
+      }
+
+      return existingIssue.key;
+    }
+
+    // Create Jira issue if none exists
     const issue = await jira.addNewIssue({
       fields: {
         project: { key: process.env.JIRA_PROJECT_KEY },
@@ -102,17 +139,9 @@ async function main() {
   const failedTests = getFailedTestsArtifacts();
 
   for (const test of failedTests) {
-    const answer = await askQuestion(
-      `❓ Do you want to log a Jira issue for test "${test.testName}"? (y/n): `
-    );
-    if (answer.toLowerCase() === "y") {
-      await createJiraIssue(test.testName, test.errorDetails, test.artifactFiles);
-    } else {
-      console.log(`⏭️ Skipped Jira issue for: ${test.testName}`);
-    }
+    console.log(`⏳ Creating/Updating Jira issue for: ${test.testName}`);
+    await createJiraIssue(test.testName, test.errorDetails, test.artifactFiles);
   }
-
-  rl.close();
 }
 
 main();
